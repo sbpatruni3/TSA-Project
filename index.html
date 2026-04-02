@@ -1,0 +1,882 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pixel Park Cleanup</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0a0a1a;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    font-family: 'Courier New', monospace;
+  }
+  canvas {
+    display: block;
+    image-rendering: pixelated;
+  }
+  #controls-hint {
+    color: #555;
+    font-size: 11px;
+    margin-top: 8px;
+    letter-spacing: 1px;
+  }
+</style>
+</head>
+<body>
+<canvas id="game" width="800" height="560"></canvas>
+<div id="controls-hint">WASD/ARROWS = move &nbsp;|&nbsp; SPACE = pick up / drop &nbsp;|&nbsp; P = pause &nbsp;|&nbsp; R = restart &nbsp;|&nbsp; ESC = menu</div>
+<script>
+// ============================================================
+// CONSTANTS
+// ============================================================
+const SCREEN_W = 800;
+const SCREEN_H = 560;
+const TILE = 32;
+const FPS = 60;
+const PLAYER_SPEED = 3.5;
+const INVENTORY_SIZE = 4;
+const SQUIRREL_SLOW = 0.4;
+const MAX_LEVEL = 7;
+
+const KIND_TRASH = "trash";
+const KIND_CAN   = "can";
+const KIND_LEAF  = "leaf";
+const KIND_SIGN  = "sign";
+const BIN_TRASH   = "bin_trash";
+const BIN_RECYCLE = "bin_recycle";
+
+const SCORE_ITEM    = 10;
+const SCORE_CORRECT = 20;
+const SCORE_WRONG   = -5;
+const SCORE_BONUS   = 2;
+
+const LEVEL_TIMES = [0, 120, 120, 150, 150, 180, 180, 200];
+
+const BLACK  = "#000000";
+const WHITE  = "#ffffff";
+const YELLOW = "#f0c030";
+const DARK   = "#14143c";
+const GRASS  = "#50b050";
+const GRASS2 = "#409040";
+const PATH   = "#c0a870";
+const PATH2  = "#b09060";
+const WATER  = "#4080d0";
+const WATER2 = "#3070c0";
+const TRUNK  = "#784820";
+const LEAVES = "#30a030";
+const LEAVES2= "#208020";
+const PLAYER_C  = "#4870e0";
+const PLAYER2_C = "#3050b0";
+const SKIN   = "#e0c880";
+const RED    = "#dc3232";
+const GREEN  = "#32dc64";
+const CYAN   = "#50f0f0";
+const ORANGE = "#f08c28";
+const PUDDLE = "#64a0dc";
+const BROWN  = "#b47840";
+const BIN_COL= "#5050b4";
+const RBIN   = "#3cb450";
+const SIGN_COL="#f0b430";
+const BENCH_F= "#a06428";
+const BENCH_S= "#643c14";
+
+// States
+const PLAYING   = "playing";
+const PAUSED    = "paused";
+const LVL_DONE  = "lvl_done";
+const GAME_OVER = "game_over";
+const WIN       = "win";
+
+// ============================================================
+// LEVEL DATA
+// ============================================================
+const MAPS = [null,
+["TTTTTTTTTTTTTTTTTTTTTTTTT",
+ "T.........................T",
+ "T.....T.......T...........T",
+ "T.......................~..T",
+ "T..T....................~..T",
+ "T.........................T",
+ "T...........B.............T",
+ "T.........................T",
+ "T.....T.......T...........T",
+ "T.........................T",
+ "T.........................T",
+ "T..T......................T",
+ "T.........................T",
+ "T.........................T",
+ "TTTTTTTTTTTTTTTTTTTTTTTTT"],
+["TTTTTTTTTTTTTTTTTTTTTTTTT",
+ "T.........................T",
+ "T....T......T......T......T",
+ "T.........................T",
+ "T.....~~..................T",
+ "T.....~~..................T",
+ "T.........................T",
+ "T..........B.......B......T",
+ "T.........................T",
+ "T....~~...................T",
+ "T....~~...................T",
+ "T.........................T",
+ "T....T.........T..........T",
+ "T.........................T",
+ "TTTTTTTTTTTTTTTTTTTTTTTTT"],
+["TTTTTTTTTTTTTTTTTTTTTTTTT",
+ "T...........T.............T",
+ "T....T................T...T",
+ "T.........................T",
+ "T.....~~~~................T",
+ "T.....~~~~................T",
+ "T.....~~~~................T",
+ "T.........................T",
+ "T.......B.......B.........T",
+ "T.........................T",
+ "T....T.........T..........T",
+ "T.........................T",
+ "T.........................T",
+ "T..........T..............T",
+ "TTTTTTTTTTTTTTTTTTTTTTTTT"],
+["TTTTTTTTTTTTTTTTTTTTTTTTT",
+ "T.T.T.T.T.T.T.T.T.T.T.T.T",
+ "T.........................T",
+ "T.T...~~~~~~...T..........T",
+ "T.....~~~~~~..............T",
+ "T.....~~~~~~..............T",
+ "T.........................T",
+ "T.......B...B...B.........T",
+ "T.........................T",
+ "T.T...T...T...T...T.......T",
+ "T.........................T",
+ "T.........................T",
+ "T.T.T...T.T...T.T.........T",
+ "T.........................T",
+ "TTTTTTTTTTTTTTTTTTTTTTTTT"],
+["TTTTTTTTTTTTTTTTTTTTTTTTT",
+ "T.T.T.T.T.T.T.T.T.T.T.T.T",
+ "T.........................T",
+ "T.T...~~~~~~...T..........T",
+ "T.....~~~~~~..............T",
+ "T.....~~~~~~..............T",
+ "T.........................T",
+ "T.......B...B...B.........T",
+ "T.........................T",
+ "T.T...T...T...T...T.......T",
+ "T.........................T",
+ "T.........................T",
+ "T.T.T...T.T...T.T.........T",
+ "T.........................T",
+ "TTTTTTTTTTTTTTTTTTTTTTTTT"],
+["TTTTTTTTTTTTTTTTTTTTTTTTT",
+ "T.T.T.T.T.T.T.T.T.T.T.T.T",
+ "T.........................T",
+ "T.T...~~~~~~...T..T.......T",
+ "T.....~~~~~~..............T",
+ "T.....~~~~~~...T..T.......T",
+ "T.........................T",
+ "T.B.....B.....B.....B.....T",
+ "T.........................T",
+ "T.T...T...T.T...T...T.....T",
+ "T.........................T",
+ "T.....T.......T.......T...T",
+ "T.T.T...T.T...T.T.....T...T",
+ "T.........................T",
+ "TTTTTTTTTTTTTTTTTTTTTTTTT"],
+["TTTTTTTTTTTTTTTTTTTTTTTTT",
+ "T.T.T.T.T.T.T.T.T.T.T.T.T",
+ "T.........................T",
+ "T.T...~~~~~~...T..T.......T",
+ "T.....~~~~~~..............T",
+ "T.....~~~~~~...T..T.......T",
+ "T.........................T",
+ "T.B.....B.....B.....B.....T",
+ "T.........................T",
+ "T.T...T...T.T...T...T.....T",
+ "T.........................T",
+ "T.....T.......T.......T...T",
+ "T.T.T...T.T...T.T.....T...T",
+ "T.........................T",
+ "TTTTTTTTTTTTTTTTTTTTTTTTT"],
+];
+
+const LEVEL_DATA = [null,
+{items:[[KIND_TRASH,4,3],[KIND_TRASH,8,5],[KIND_TRASH,12,3],[KIND_TRASH,16,7],
+        [KIND_TRASH,6,9],[KIND_TRASH,20,5],[KIND_CAN,5,7],[KIND_CAN,14,9],
+        [KIND_LEAF,9,11],[KIND_LEAF,18,3]],
+ bins:[[BIN_TRASH,3,12],[BIN_RECYCLE,20,12]],
+ puddles:[[10,7]], squirrels:[],
+ goal:10, desc:"Pick up all 10 items!"},
+{items:[[KIND_TRASH,3,2],[KIND_TRASH,7,4],[KIND_TRASH,12,6],[KIND_TRASH,17,3],
+        [KIND_TRASH,21,8],[KIND_TRASH,4,10],[KIND_TRASH,9,12],
+        [KIND_CAN,6,6],[KIND_CAN,14,4],[KIND_CAN,19,10],
+        [KIND_LEAF,2,8],[KIND_LEAF,11,2],[KIND_LEAF,22,5]],
+ bins:[[BIN_TRASH,2,13],[BIN_RECYCLE,21,13]],
+ puddles:[[8,8],[15,10]], squirrels:[[10,6,96]],
+ goal:13, desc:"Sort items into the right bins!"},
+{items:[[KIND_TRASH,3,1],[KIND_TRASH,6,3],[KIND_TRASH,10,1],[KIND_TRASH,14,3],
+        [KIND_TRASH,18,1],[KIND_TRASH,21,3],[KIND_TRASH,3,10],[KIND_TRASH,8,12],
+        [KIND_CAN,5,5],[KIND_CAN,9,9],[KIND_CAN,15,5],[KIND_CAN,20,9],
+        [KIND_LEAF,2,7],[KIND_LEAF,12,11],[KIND_LEAF,19,7],[KIND_SIGN,11,12]],
+ bins:[[BIN_TRASH,1,13],[BIN_TRASH,12,13],[BIN_RECYCLE,22,13]],
+ puddles:[[7,7],[16,3],[20,11]], squirrels:[[8,4,96],[17,8,80]],
+ goal:16, desc:"Bigger park - watch for squirrels!"},
+{items:[[KIND_TRASH,2,2],[KIND_TRASH,5,2],[KIND_TRASH,8,2],[KIND_TRASH,11,2],
+        [KIND_TRASH,14,2],[KIND_TRASH,17,2],[KIND_TRASH,20,2],[KIND_TRASH,23,2],
+        [KIND_CAN,3,5],[KIND_CAN,7,5],[KIND_CAN,13,5],[KIND_CAN,18,5],[KIND_CAN,22,5],
+        [KIND_LEAF,4,9],[KIND_LEAF,9,9],[KIND_LEAF,15,9],[KIND_LEAF,21,9],
+        [KIND_SIGN,6,12],[KIND_SIGN,16,12]],
+ bins:[[BIN_TRASH,1,13],[BIN_TRASH,11,13],[BIN_RECYCLE,22,13]],
+ puddles:[[5,7],[12,7],[19,7],[9,11]], squirrels:[[6,4,96],[14,6,96],[20,10,80]],
+ goal:19, desc:"Multiple zones - keep sorting!"},
+{items:[[KIND_TRASH,2,1],[KIND_TRASH,5,3],[KIND_TRASH,8,1],[KIND_TRASH,11,3],
+        [KIND_TRASH,14,1],[KIND_TRASH,17,3],[KIND_TRASH,20,1],[KIND_TRASH,23,3],
+        [KIND_TRASH,2,8],[KIND_TRASH,23,8],
+        [KIND_CAN,3,5],[KIND_CAN,7,5],[KIND_CAN,13,5],[KIND_CAN,18,5],
+        [KIND_CAN,22,5],[KIND_CAN,10,9],[KIND_CAN,15,9],
+        [KIND_LEAF,4,11],[KIND_LEAF,9,11],[KIND_LEAF,15,11],[KIND_LEAF,21,11],
+        [KIND_SIGN,6,13],[KIND_SIGN,16,13],[KIND_SIGN,11,1]],
+ bins:[[BIN_TRASH,1,13],[BIN_TRASH,12,7],[BIN_RECYCLE,22,13],[BIN_RECYCLE,1,7]],
+ puddles:[[5,6],[12,6],[19,6],[8,10],[16,10]],
+ squirrels:[[6,3,96],[14,5,96],[20,9,80],[3,11,64]],
+ goal:23, desc:"Playground & Pond zone - 4 bins!"},
+{items:[[KIND_TRASH,2,1],[KIND_TRASH,4,2],[KIND_TRASH,6,1],[KIND_TRASH,8,3],
+        [KIND_TRASH,10,1],[KIND_TRASH,12,2],[KIND_TRASH,14,1],[KIND_TRASH,16,3],
+        [KIND_TRASH,18,1],[KIND_TRASH,20,2],[KIND_TRASH,22,1],[KIND_TRASH,23,3],
+        [KIND_CAN,3,5],[KIND_CAN,6,6],[KIND_CAN,9,5],[KIND_CAN,12,6],
+        [KIND_CAN,15,5],[KIND_CAN,18,6],[KIND_CAN,21,5],[KIND_CAN,23,6],
+        [KIND_LEAF,2,9],[KIND_LEAF,5,10],[KIND_LEAF,9,9],[KIND_LEAF,13,10],
+        [KIND_LEAF,17,9],[KIND_LEAF,21,10],
+        [KIND_SIGN,4,12],[KIND_SIGN,11,12],[KIND_SIGN,19,12]],
+ bins:[[BIN_TRASH,1,13],[BIN_TRASH,8,13],[BIN_TRASH,15,13],
+       [BIN_RECYCLE,22,13],[BIN_RECYCLE,1,7]],
+ puddles:[[5,7],[11,7],[17,7],[8,11],[20,3]],
+ squirrels:[[4,4,80],[10,6,96],[18,4,80],[22,8,64]],
+ goal:29, desc:"Picnic area - no mistakes!"},
+{items:[[KIND_TRASH,2,1],[KIND_TRASH,4,2],[KIND_TRASH,6,1],[KIND_TRASH,8,3],
+        [KIND_TRASH,10,1],[KIND_TRASH,12,2],[KIND_TRASH,14,1],[KIND_TRASH,16,3],
+        [KIND_TRASH,18,1],[KIND_TRASH,20,2],[KIND_TRASH,22,1],[KIND_TRASH,23,3],
+        [KIND_TRASH,2,8],[KIND_TRASH,23,8],[KIND_TRASH,12,10],
+        [KIND_CAN,3,5],[KIND_CAN,6,6],[KIND_CAN,9,5],[KIND_CAN,12,6],
+        [KIND_CAN,15,5],[KIND_CAN,18,6],[KIND_CAN,21,5],[KIND_CAN,23,6],
+        [KIND_CAN,2,11],[KIND_CAN,23,11],
+        [KIND_LEAF,2,9],[KIND_LEAF,5,10],[KIND_LEAF,9,9],[KIND_LEAF,13,10],
+        [KIND_LEAF,17,9],[KIND_LEAF,21,10],[KIND_LEAF,7,12],[KIND_LEAF,19,12],
+        [KIND_SIGN,4,12],[KIND_SIGN,11,12],[KIND_SIGN,19,13],[KIND_SIGN,22,3]],
+ bins:[[BIN_TRASH,1,13],[BIN_TRASH,8,13],[BIN_TRASH,15,7],
+       [BIN_RECYCLE,22,13],[BIN_RECYCLE,1,7],[BIN_RECYCLE,22,7]],
+ puddles:[[5,7],[11,7],[17,7],[8,11],[20,3],[3,3],[22,11]],
+ squirrels:[[4,4,80],[10,6,96],[18,4,80],[22,8,64],[6,10,80],[15,10,96]],
+ goal:39, desc:"FINAL LEVEL - sort everything!"},
+];
+
+// ============================================================
+// DRAW UTILITIES
+// ============================================================
+function fillRect(ctx, x, y, w, h, color) {
+  ctx.fillStyle = color;
+  ctx.fillRect(x, y, w, h);
+}
+
+function drawText(ctx, x, y, msg, size=10, color=WHITE, anchor="nw") {
+  ctx.fillStyle = color;
+  ctx.font = `bold ${size}px "Courier New", monospace`;
+  ctx.textBaseline = anchor === "n" ? "top" : "top";
+  if (anchor === "center") {
+    ctx.textAlign = "center";
+    ctx.fillText(msg, x, y);
+    ctx.textAlign = "left";
+  } else if (anchor === "n") {
+    ctx.textAlign = "center";
+    ctx.fillText(msg, x, y);
+    ctx.textAlign = "left";
+  } else {
+    ctx.textAlign = "left";
+    ctx.fillText(msg, x, y);
+  }
+}
+
+function drawGrass(ctx, x, y) {
+  const c = (Math.floor(x/TILE) + Math.floor(y/TILE)) % 2 === 0 ? GRASS : GRASS2;
+  fillRect(ctx, x, y, TILE, TILE, c);
+}
+function drawPath(ctx, x, y) {
+  const c = (Math.floor(x/TILE) + Math.floor(y/TILE)) % 2 === 0 ? PATH : PATH2;
+  fillRect(ctx, x, y, TILE, TILE, c);
+}
+function drawWater(ctx, x, y) {
+  fillRect(ctx, x, y, TILE, TILE, WATER);
+  fillRect(ctx, x, y+6, TILE, 4, WATER2);
+  fillRect(ctx, x, y+18, TILE, 4, WATER2);
+}
+function drawTree(ctx, x, y) {
+  fillRect(ctx, x+12, y+22, 8, 10, TRUNK);
+  fillRect(ctx, x+4, y+10, 24, 18, LEAVES2);
+  fillRect(ctx, x+8, y+4, 16, 14, LEAVES);
+}
+function drawBench(ctx, x, y) {
+  fillRect(ctx, x+2, y+14, 28, 6, BENCH_F);
+  fillRect(ctx, x+2, y+8, 28, 4, BENCH_F);
+  fillRect(ctx, x+4, y+20, 4, 8, BENCH_S);
+  fillRect(ctx, x+24, y+20, 4, 8, BENCH_S);
+}
+function drawSign(ctx, x, y) {
+  fillRect(ctx, x+14, y+16, 4, 14, BENCH_S);
+  fillRect(ctx, x+4, y+4, 24, 14, SIGN_COL);
+  fillRect(ctx, x+6, y+6, 20, 10, YELLOW);
+  drawText(ctx, x+13, y+6, "!", 9, BLACK, "nw");
+}
+function drawBin(ctx, x, y, kind) {
+  const c = kind === BIN_TRASH ? BIN_COL : RBIN;
+  fillRect(ctx, x+6, y+10, 20, 20, c);
+  fillRect(ctx, x+8, y+12, 16, 2, WHITE);
+  fillRect(ctx, x+4, y+6, 24, 6, c);
+  const lbl = kind === BIN_TRASH ? "T" : "R";
+  const lc  = kind === BIN_TRASH ? WHITE : BLACK;
+  drawText(ctx, x+16, y+21, lbl, 9, lc, "center");
+}
+function drawTrash(ctx, x, y) {
+  fillRect(ctx, x+8, y+10, 16, 14, WHITE);
+  fillRect(ctx, x+10, y+12, 4, 2, "#c8c8c8");
+  fillRect(ctx, x+10, y+16, 8, 2, "#c8c8c8");
+}
+function drawCan(ctx, x, y) {
+  fillRect(ctx, x+10, y+8, 12, 18, "#c0c040");
+  fillRect(ctx, x+10, y+8, 12, 4, YELLOW);
+  fillRect(ctx, x+10, y+22, 12, 4, YELLOW);
+}
+function drawLeaf(ctx, x, y) {
+  ctx.fillStyle = "#a0dc50";
+  ctx.beginPath();
+  ctx.ellipse(x+16, y+17, 10, 7, 0, 0, Math.PI*2);
+  ctx.fill();
+  fillRect(ctx, x+14, y+12, 4, 10, "#78c83c");
+}
+function drawPuddle(ctx, x, y) {
+  ctx.fillStyle = PUDDLE;
+  ctx.beginPath();
+  ctx.ellipse(x+16, y+20, 14, 6, 0, 0, Math.PI*2);
+  ctx.fill();
+}
+function drawSquirrel(ctx, x, y, facing=1) {
+  fillRect(ctx, x+8, y+14, 16, 12, BROWN);
+  const hx = facing > 0 ? x+18 : x+6;
+  fillRect(ctx, hx, y+8, 10, 10, BROWN);
+  const tx = facing > 0 ? x+4 : x+20;
+  fillRect(ctx, tx, y+8, 8, 16, BROWN);
+}
+function drawPlayer(ctx, x, y, frame=0, carrying=0) {
+  const lx = Math.floor(frame/8) % 2 === 0 ? 2 : -2;
+  fillRect(ctx, x+8, y+28, 6, 8+lx, PLAYER2_C);
+  fillRect(ctx, x+18, y+28, 6, 8-lx, PLAYER2_C);
+  fillRect(ctx, x+8, y+14, 16, 14, PLAYER_C);
+  fillRect(ctx, x+4, y+16, 6, 10, PLAYER_C);
+  fillRect(ctx, x+22, y+16, 6, 10, PLAYER_C);
+  fillRect(ctx, x+10, y+6, 12, 12, SKIN);
+  fillRect(ctx, x+8, y+4, 16, 5, "#282890");
+  if (carrying > 0) {
+    drawText(ctx, x+16, y-2, String(carrying), 9, YELLOW, "center");
+  }
+}
+
+function drawItemSprite(ctx, kind, x, y) {
+  if (kind === KIND_TRASH) drawTrash(ctx, x, y);
+  else if (kind === KIND_CAN) drawCan(ctx, x, y);
+  else if (kind === KIND_LEAF) drawLeaf(ctx, x, y);
+  else if (kind === KIND_SIGN) drawSign(ctx, x, y);
+}
+
+function drawHUD(ctx, score, level, timeLeft, inventory, done, total, slow=0, stun=0) {
+  drawText(ctx, 10, 8, "LVL " + level, 11, YELLOW, "nw");
+  drawText(ctx, 10, 26, "SCORE " + String(score).padStart(5,"0"), 9, WHITE, "nw");
+  drawText(ctx, 10, 42, done + "/" + total + " TASKS", 8, CYAN, "nw");
+
+  const mins = Math.floor(timeLeft / 60);
+  const secs = Math.floor(timeLeft % 60);
+  const tc = timeLeft < 20 ? RED : WHITE;
+  const timerStr = String(mins).padStart(2,"0") + ":" + String(secs).padStart(2,"0");
+  drawText(ctx, SCREEN_W/2, 7, timerStr, 14, tc, "n");
+
+  // inventory
+  const barX = SCREEN_W/2 - (INVENTORY_SIZE * 44) / 2;
+  const barY = SCREEN_H - 60;
+  for (let i = 0; i < inventory.length; i++) {
+    drawItemSprite(ctx, inventory[i], barX + i*44, barY);
+  }
+
+  if (stun > 0) {
+    drawText(ctx, SCREEN_W/2, barY-22, "STUNNED! " + stun.toFixed(1) + "s", 12, ORANGE, "n");
+  } else if (slow > 0) {
+    drawText(ctx, SCREEN_W/2, barY-22, "SLOWED! " + slow.toFixed(1) + "s", 12, CYAN, "n");
+  }
+}
+
+// ============================================================
+// ENTITIES
+// ============================================================
+class Player {
+  constructor(x, y) {
+    this.x = x; this.y = y;
+    this.w = 24; this.h = 28;
+    this.vx = 0; this.vy = 0;
+    this.inventory = [];
+    this.frame = 0;
+    this.slowTimer = 0; this.slowCooldown = 0;
+    this.stunTimer = 0; this.stunCooldown = 0;
+  }
+  cx() { return this.x + this.w/2; }
+  cy() { return this.y + this.h/2; }
+  canPickup() { return this.inventory.length < INVENTORY_SIZE; }
+  pickup(kind) { if (this.canPickup()) { this.inventory.push(kind); return true; } return false; }
+
+  setVelocity(keys) {
+    if (this.stunTimer > 0) { this.vx = 0; this.vy = 0; return; }
+    let spd = PLAYER_SPEED;
+    if (this.slowTimer > 0) spd *= SQUIRREL_SLOW;
+    this.vx = 0; this.vy = 0;
+    if (keys.has("ArrowLeft") || keys.has("a")) this.vx -= spd;
+    if (keys.has("ArrowRight") || keys.has("d")) this.vx += spd;
+    if (keys.has("ArrowUp") || keys.has("w")) this.vy -= spd;
+    if (keys.has("ArrowDown") || keys.has("s")) this.vy += spd;
+    if (this.vx !== 0 && this.vy !== 0) { this.vx *= 0.707; this.vy *= 0.707; }
+  }
+
+  update(walls) {
+    if (this.slowTimer > 0) this.slowTimer -= 1/60;
+    if (this.slowCooldown > 0) this.slowCooldown -= 1/60;
+    if (this.stunTimer > 0) this.stunTimer -= 1/60;
+    if (this.stunCooldown > 0) this.stunCooldown -= 1/60;
+
+    this.x += this.vx;
+    this._fixX(walls);
+    this.y += this.vy;
+    this._fixY(walls);
+
+    this.x = Math.max(0, Math.min(SCREEN_W - this.w, this.x));
+    this.y = Math.max(0, Math.min(SCREEN_H - this.h - 50, this.y));
+
+    if (Math.abs(this.vx) > 0.5 || Math.abs(this.vy) > 0.5) this.frame++;
+  }
+
+  _touching(ox1, oy1, ox2, oy2) {
+    return this.x < ox2 && this.x+this.w > ox1 && this.y < oy2 && this.y+this.h > oy1;
+  }
+  _fixX(walls) {
+    for (const [wx,wy,wx2,wy2] of walls) {
+      if (this._touching(wx,wy,wx2,wy2)) {
+        if (this.vx > 0) this.x = wx - this.w;
+        else if (this.vx < 0) this.x = wx2;
+      }
+    }
+  }
+  _fixY(walls) {
+    for (const [wx,wy,wx2,wy2] of walls) {
+      if (this._touching(wx,wy,wx2,wy2)) {
+        if (this.vy > 0) this.y = wy - this.h;
+        else if (this.vy < 0) this.y = wy2;
+      }
+    }
+  }
+  near(ox1, oy1, ox2, oy2, margin=12) {
+    const cx1 = this.cx()-margin, cy1 = this.cy()-margin;
+    const cx2 = this.cx()+margin, cy2 = this.cy()+margin;
+    return cx1 < ox2 && cx2 > ox1 && cy1 < oy2 && cy2 > oy1;
+  }
+}
+
+class Item {
+  constructor(kind, x, y) {
+    this.kind = kind; this.x = x; this.y = y;
+    this.w = 28; this.h = 28;
+    this.picked = false; this.bob = 0;
+  }
+  cx() { return this.x + this.w/2; }
+  cy() { return this.y + this.h/2; }
+  update() { this.bob += 0.05; }
+  drawY() { return this.y + Math.round(Math.sin(this.bob) * 3); }
+}
+
+class Bin {
+  constructor(kind, x, y) {
+    this.kind = kind; this.x = x; this.y = y;
+    this.w = 32; this.h = 32; this.flash = 0;
+  }
+  accepts(kind) {
+    if (this.kind === BIN_TRASH) return [KIND_TRASH, KIND_LEAF, KIND_SIGN].includes(kind);
+    return kind === KIND_CAN;
+  }
+  update() { if (this.flash > 0) this.flash--; }
+}
+
+class Puddle {
+  constructor(x, y) { this.x = x; this.y = y; this.w = 32; this.h = 20; }
+}
+
+class Squirrel {
+  constructor(x, y, patrol=96) {
+    this.x = x; this.y = y; this.w = 24; this.h = 24;
+    this.patrol = patrol; this.speed = 1.5; this.dir = 1; this.moved = 0;
+  }
+  cx() { return this.x + this.w/2; }
+  cy() { return this.y + this.h/2; }
+  update() {
+    const move = this.speed * this.dir;
+    this.x += move;
+    this.moved += Math.abs(move);
+    if (this.moved >= this.patrol) { this.dir *= -1; this.moved = 0; }
+  }
+}
+
+// ============================================================
+// LEVEL
+// ============================================================
+class Level {
+  constructor(number) {
+    this.number = number;
+    const data = LEVEL_DATA[number];
+    const tileMap = MAPS[number];
+    this.goalCount = data.goal;
+    this.description = data.desc;
+    this.timeLimit = LEVEL_TIMES[number];
+    this.walls = [];
+    this.bgTiles = [];
+
+    for (let ri = 0; ri < tileMap.length; ri++) {
+      for (let ci = 0; ci < tileMap[ri].length; ci++) {
+        const ch = tileMap[ri][ci];
+        const x = ci * TILE, y = ri * TILE;
+        if (ch === 'T') {
+          this.walls.push([x, y, x+TILE, y+TILE]);
+          this.bgTiles.push(["tree", x, y]);
+        } else if (ch === '~') {
+          this.walls.push([x, y, x+TILE, y+TILE]);
+          this.bgTiles.push(["water", x, y]);
+        } else if (ch === 'B') {
+          this.walls.push([x, y, x+TILE, y+TILE]);
+          this.bgTiles.push(["bench", x, y]);
+        } else if (ch === '.') {
+          this.bgTiles.push(["path", x, y]);
+        } else {
+          this.bgTiles.push(["grass", x, y]);
+        }
+      }
+    }
+
+    this.items     = data.items.map(([k,c,r]) => new Item(k, c*TILE, r*TILE));
+    this.bins      = data.bins.map(([k,c,r]) => new Bin(k, c*TILE, r*TILE));
+    this.puddles   = data.puddles.map(([c,r]) => new Puddle(c*TILE, r*TILE));
+    this.squirrels = data.squirrels.map(([c,r,p]) => new Squirrel(c*TILE, r*TILE, p));
+  }
+  itemsLeft()      { return this.items.filter(i => !i.picked); }
+  itemsCollected() { return this.items.filter(i => i.picked).length; }
+}
+
+// ============================================================
+// GAME
+// ============================================================
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+const game = {
+  state: PLAYING,
+  score: 0,
+  levelNo: 1,
+  level: null,
+  player: null,
+  timeLeft: 0,
+  keys: new Set(),
+  anim: 0,
+  feedback: [],
+  descTimer: 0,
+  timeBonus: 0,
+  immuneShown: false,
+  lastTime: null,
+
+  startLevel(n) {
+    this.levelNo = n;
+    this.level = new Level(n);
+    this.player = new Player(SCREEN_W/2, SCREEN_H/2);
+    this.timeLeft = LEVEL_TIMES[n];
+    this.feedback = [];
+    this.descTimer = 150;
+    if (n === 1) this.score = 0;
+    this.state = PLAYING;
+  },
+
+  addMessage(text, color, x, y, ttl=72) {
+    this.feedback.push({text, color, x: Math.round(x), y: Math.round(y), ttl});
+  },
+
+  interact() {
+    const p = this.player;
+    const lv = this.level;
+    const reach = 36;
+
+    if (p.inventory.length > 0) {
+      for (const b of lv.bins) {
+        if (p.near(b.x, b.y, b.x+b.w, b.y+b.h, reach)) {
+          const kept = [];
+          let deposited = 0;
+          for (const kind of p.inventory) {
+            if (b.accepts(kind)) {
+              this.score += SCORE_CORRECT;
+              deposited++;
+            } else {
+              this.score = Math.max(0, this.score + SCORE_WRONG);
+              kept.push(kind);
+              this.addMessage("Wrong bin! -5", RED, b.x+16, b.y-10);
+            }
+          }
+          p.inventory = kept;
+          if (deposited > 0) {
+            b.flash = 20;
+            this.addMessage("+" + (deposited * SCORE_CORRECT), GREEN, b.x+16, b.y-10);
+          }
+          return;
+        }
+      }
+    }
+
+    for (const item of lv.itemsLeft()) {
+      if (p.near(item.x, item.y, item.x+item.w, item.y+item.h, reach)) {
+        if (p.canPickup()) {
+          item.picked = true;
+          p.pickup(item.kind);
+          this.score += SCORE_ITEM;
+          const names = {trash:"Paper", can:"Can", leaf:"Leaf", sign:"Sign"};
+          this.addMessage("+" + SCORE_ITEM, YELLOW, item.cx(), item.y-8);
+          this.addMessage("Got: " + (names[item.kind] || item.kind), CYAN, p.cx(), p.y+32);
+        } else {
+          this.addMessage("Inventory full!", ORANGE, p.cx(), p.y-10);
+        }
+        return;
+      }
+    }
+  },
+
+  update(dt) {
+    this.anim++;
+    if (this.state !== PLAYING) return;
+
+    const p = this.player;
+    const lv = this.level;
+
+    this.timeLeft -= dt;
+    if (this.timeLeft <= 0) { this.timeLeft = 0; this.state = GAME_OVER; return; }
+
+    p.setVelocity(this.keys);
+    p.update(lv.walls);
+
+    for (const item of lv.items) item.update();
+    for (const b of lv.bins) b.update();
+    for (const sq of lv.squirrels) sq.update();
+
+    for (const pu of lv.puddles) {
+      if (p.near(pu.x, pu.y, pu.x+pu.w, pu.y+pu.h, 8)) {
+        if (p.slowCooldown <= 0) {
+          p.slowTimer = Math.max(p.slowTimer, 3.5);
+          p.slowCooldown = 4.5;
+          this.addMessage("Slowed!", CYAN, p.cx(), p.y-10);
+        }
+      }
+    }
+
+    let squirrelHit = false;
+    for (const sq of lv.squirrels) {
+      if (p.near(sq.x, sq.y, sq.x+sq.w, sq.y+sq.h, 15)) {
+        squirrelHit = true;
+        if (p.stunCooldown <= 0) {
+          p.stunTimer = Math.max(p.stunTimer, 1.5);
+          p.stunCooldown = 2.75;
+          this.addMessage("Stunned!", ORANGE, p.cx(), p.y-10);
+          this.immuneShown = false;
+        } else if (!this.immuneShown) {
+          this.addMessage("Immune", CYAN, p.cx(), p.y-10);
+          this.immuneShown = true;
+        }
+        break;
+      }
+    }
+    if (!squirrelHit) this.immuneShown = false;
+
+    this.feedback = this.feedback.filter(m => { m.ttl--; return m.ttl > 0; });
+    if (this.descTimer > 0) this.descTimer--;
+
+    if (lv.itemsLeft().length === 0 && p.inventory.length === 0) {
+      const bonus = Math.floor(this.timeLeft * SCORE_BONUS);
+      this.score += bonus;
+      this.timeBonus = bonus;
+      this.state = LVL_DONE;
+    }
+  },
+
+  draw() {
+    ctx.fillStyle = DARK;
+    ctx.fillRect(0, 0, SCREEN_W, SCREEN_H);
+
+    this.drawGame();
+
+    if (this.state === PAUSED)    this.drawPaused();
+    else if (this.state === LVL_DONE)  this.drawLevelDone();
+    else if (this.state === GAME_OVER) this.drawGameOver();
+    else if (this.state === WIN)       this.drawWin();
+  },
+
+  drawGame() {
+    const lv = this.level;
+    const p = this.player;
+    if (!lv || !p) return;
+
+    for (const [kind, x, y] of lv.bgTiles) {
+      if (kind === "grass") drawGrass(ctx, x, y);
+      else if (kind === "path") drawPath(ctx, x, y);
+      else if (kind === "water") drawWater(ctx, x, y);
+      else if (kind === "tree") drawTree(ctx, x, y);
+      else if (kind === "bench") drawBench(ctx, x, y);
+    }
+
+    for (const pu of lv.puddles) drawPuddle(ctx, pu.x, pu.y);
+
+    for (const item of lv.itemsLeft()) drawItemSprite(ctx, item.kind, item.x, item.drawY());
+
+    for (const b of lv.bins) {
+      if (b.flash > 0) {
+        ctx.save();
+        ctx.globalAlpha = 0.5 + 0.5 * Math.sin(b.flash * 0.5);
+        drawBin(ctx, b.x, b.y, b.kind);
+        ctx.restore();
+      } else {
+        drawBin(ctx, b.x, b.y, b.kind);
+      }
+    }
+
+    for (const sq of lv.squirrels) drawSquirrel(ctx, Math.round(sq.x), Math.round(sq.y), sq.dir);
+
+    drawPlayer(ctx, Math.round(p.x), Math.round(p.y), p.frame, p.inventory.length);
+
+    for (const {text, color, x, y, ttl} of this.feedback) {
+      const offset = Math.floor((72 - ttl) / 3);
+      drawText(ctx, x, y - offset, text, 10, color, "center");
+    }
+
+    drawHUD(ctx, this.score, this.levelNo, this.timeLeft,
+            p.inventory, lv.itemsCollected(), lv.goalCount,
+            p.slowTimer, p.stunTimer);
+
+    if (this.descTimer > 0) {
+      drawText(ctx, SCREEN_W/2, SCREEN_H/2 - 54, lv.description, 12, YELLOW, "n");
+      drawText(ctx, SCREEN_W/2, SCREEN_H/2 - 26, "T bin = paper, leaves, signs", 10, CYAN, "n");
+      drawText(ctx, SCREEN_W/2, SCREEN_H/2 - 6,  "R bin = cans only", 10, GREEN, "n");
+    }
+  },
+
+  drawOverlay(bx, by, bw, bh) {
+    ctx.fillStyle = "rgba(0,0,0,0.55)";
+    ctx.fillRect(0, 0, SCREEN_W, SCREEN_H);
+    fillRect(ctx, bx, by, bw, bh, DARK);
+  },
+
+  drawPaused() {
+    const bw=360, bh=180, bx=(SCREEN_W-360)/2, by=(SCREEN_H-180)/2;
+    this.drawOverlay(bx, by, bw, bh);
+    drawText(ctx, SCREEN_W/2, by+18, "PAUSED", 20, YELLOW, "n");
+    ["P - Resume", "R - Restart", "Esc - Restart from Level 1"].forEach((l,i) =>
+      drawText(ctx, SCREEN_W/2, by+80+i*32, l, 10, WHITE, "n"));
+  },
+
+  drawLevelDone() {
+    const bw=480, bh=260, bx=(SCREEN_W-480)/2, by=(SCREEN_H-260)/2;
+    this.drawOverlay(bx, by, bw, bh);
+    drawText(ctx, SCREEN_W/2, by+16, "Level Complete!", 18, YELLOW, "n");
+    ["Level " + this.levelNo + " cleared!",
+     "Score: " + String(this.score).padStart(5,"0"),
+     "Time bonus: +" + this.timeBonus].forEach((l,i) =>
+      drawText(ctx, SCREEN_W/2, by+80+i*34, l, 11, WHITE, "n"));
+    if (Math.floor(this.anim/30) % 2 === 0)
+      drawText(ctx, SCREEN_W/2, by+210, "ENTER - Next Level", 10, CYAN, "n");
+  },
+
+  drawGameOver() {
+    const bw=440, bh=240, bx=(SCREEN_W-440)/2, by=(SCREEN_H-240)/2;
+    this.drawOverlay(bx, by, bw, bh);
+    drawText(ctx, SCREEN_W/2, by+18, "Time's Up!", 20, RED, "n");
+    drawText(ctx, SCREEN_W/2, by+84, "Level " + this.levelNo, 12, WHITE, "n");
+    drawText(ctx, SCREEN_W/2, by+118, "Score: " + String(this.score).padStart(5,"0"), 12, YELLOW, "n");
+    if (Math.floor(this.anim/30) % 2 === 0)
+      drawText(ctx, SCREEN_W/2, by+178, "R - Try Again    Esc - Restart", 10, CYAN, "n");
+  },
+
+  drawWin() {
+    fillRect(ctx, 0, 0, SCREEN_W, SCREEN_H, "#003c00");
+    fillRect(ctx, 0, SCREEN_H-130, SCREEN_W, 130, GRASS);
+    for (let tx = 0; tx < SCREEN_W; tx += 80) drawTree(ctx, tx, SCREEN_H-170);
+
+    const bw=560, bh=220, bx=(SCREEN_W-560)/2, by=70;
+    fillRect(ctx, bx, by, bw, bh, BLACK);
+    drawText(ctx, SCREEN_W/2, by+18, "YOU WIN!", 22, YELLOW, "n");
+    drawText(ctx, SCREEN_W/2, by+76, "The park is clean!", 11, GREEN, "n");
+    drawText(ctx, SCREEN_W/2, by+110, "Final Score: " + String(this.score).padStart(5,"0"), 11, CYAN, "n");
+    if (Math.floor(this.anim/30) % 2 === 0)
+      drawText(ctx, SCREEN_W/2, by+166, "ENTER - Play Again    Esc - Quit", 10, WHITE, "n");
+
+    [300, 390, 480].forEach((px, i) => {
+      const dy = Math.round(Math.sin(this.anim * 0.1 + i) * 10);
+      drawPlayer(ctx, px, SCREEN_H-110+dy, this.anim + i*20, 0);
+    });
+  },
+
+  keyDown(e) {
+    this.keys.add(e.key);
+    const key = e.key;
+
+    if (this.state === PLAYING) {
+      if (key === "p" || key === "P") this.state = PAUSED;
+      else if (key === "r" || key === "R") this.startLevel(this.levelNo);
+      else if (key === "Escape") { this.score = 0; this.startLevel(1); }
+      else if (key === " ") { e.preventDefault(); this.interact(); }
+    } else if (this.state === PAUSED) {
+      if (key === "p" || key === "P") this.state = PLAYING;
+      else if (key === "r" || key === "R") this.startLevel(this.levelNo);
+      else if (key === "Escape") { this.score = 0; this.startLevel(1); }
+    } else if (this.state === LVL_DONE) {
+      if (key === "Enter") {
+        if (this.levelNo >= MAX_LEVEL) this.state = WIN;
+        else this.startLevel(this.levelNo + 1);
+      } else if (key === "Escape") { this.score = 0; this.startLevel(1); }
+    } else if (this.state === GAME_OVER) {
+      if (key === "r" || key === "R") this.startLevel(this.levelNo);
+      else if (key === "Escape") { this.score = 0; this.startLevel(1); }
+    } else if (this.state === WIN) {
+      if (key === "Enter") { this.score = 0; this.startLevel(1); }
+    }
+  },
+
+  keyUp(e) { this.keys.delete(e.key); },
+};
+
+// ============================================================
+// INIT & LOOP
+// ============================================================
+window.addEventListener("keydown", e => {
+  if (["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"," "].includes(e.key)) e.preventDefault();
+  game.keyDown(e);
+});
+window.addEventListener("keyup", e => game.keyUp(e));
+
+game.startLevel(1);
+
+function loop(timestamp) {
+  if (!game.lastTime) game.lastTime = timestamp;
+  const dt = Math.min((timestamp - game.lastTime) / 1000, 0.05);
+  game.lastTime = timestamp;
+  game.update(dt);
+  game.draw();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
